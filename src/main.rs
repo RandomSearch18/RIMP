@@ -1,18 +1,38 @@
 use chumsky::prelude::*;
 
+#[derive(Debug)]
+enum Program<'src> {
+    Commands(Vec<Command<'src>>),
+}
+
+#[derive(Debug, Clone)]
+enum AExpr<'src> {
+    Int(u64),
+    Variable(&'src str),
+}
+
+#[derive(Debug, Clone)]
+enum Command<'src> {
+    Skip(),
+    Assignment {
+        name: &'src str,
+        value: Box<AExpr<'src>>,
+    },
+}
+
+fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>> {
+    let command = text::ascii::keyword("skip").to(Command::Skip());
+
+    let cmds = command
+        .separated_by(just(";").padded())
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .padded();
+
+    cmds.map(Program::Commands)
+}
+
 fn main() {
-    println!("Hello, world!");
-}
-
-fn parser<'src>() -> impl Parser<'src, &'src str, ()> {
-    end()
-}
-
-#[test]
-fn test_parser() {
-    // Our parser expects empty strings, so this should parse successfully
-    assert_eq!(parser().parse("").into_result(), Ok(()));
-
-    // Anything other than an empty string should produce an error
-    assert!(parser().parse("123").has_errors());
+    let src = std::fs::read_to_string(std::env::args().nth(1).unwrap()).unwrap();
+    println!("{:?}", parser().parse(&src));
 }
