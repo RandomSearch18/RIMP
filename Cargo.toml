@@ -5,4 +5,5 @@ edition = "2024"
 authors = ["Mish <mish@slevel.xyz>"]
 
 [dependencies]
+ariadne = "0.6.0"
 chumsky = "0.13.0"

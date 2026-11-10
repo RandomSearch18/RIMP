@@ -1,4 +1,9 @@
-use chumsky::prelude::*;
+use ariadne::{Color, Label, Report, ReportKind, Source};
+use chumsky::{
+    extra::{Err, ParserExtra},
+    prelude::*,
+    span::Span,
+};
 
 #[derive(Debug)]
 enum Program<'src> {
@@ -20,7 +25,9 @@ enum Command<'src> {
     },
 }
 
-fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>> {
+type ParserError<'src> = extra::Err<Rich<'src, char>>;
+
+fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'src>> {
     let command = text::ascii::keyword("skip").to(Command::Skip());
 
     let cmds = command
@@ -33,6 +40,24 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>> {
 }
 
 fn main() {
-    let src = std::fs::read_to_string(std::env::args().nth(1).unwrap()).unwrap();
-    println!("{:?}", parser().parse(&src));
+    let input_file = std::env::args().nth(1).unwrap();
+    let src = std::fs::read_to_string(&input_file).unwrap();
+    let result = parser().parse(&src);
+    println!("{:?}", result);
+    if let Err(errors) = result.into_result() {
+        for error in errors {
+            let span = error.span();
+            let range = span.start..span.end;
+            Report::build(ReportKind::Error, (input_file.as_str(), range.clone()))
+                .with_message("parse error")
+                .with_label(
+                    Label::new((input_file.as_str(), range))
+                        .with_message(error.reason().to_string())
+                        .with_color(Color::Red),
+                )
+                .finish()
+                .eprint((input_file.as_str(), Source::from(src.as_str())))
+                .unwrap();
+        }
+    }
 }
