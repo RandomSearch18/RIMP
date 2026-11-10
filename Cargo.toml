@@ -1,0 +1,8 @@
+[package]
+name = "mish-rimp"
+version = "0.1.0"
+edition = "2024"
+authors = ["Mish <mish@slevel.xyz>"]
+
+[dependencies]
+chumsky = "0.13.0"
