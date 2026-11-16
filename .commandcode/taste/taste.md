@@ -1,5 +1,9 @@
 # Taste
 
+## Coding style
+
+- Pushes for idiomatic, DRY Rust: asks "is this the most idiomatic way?" and "any DRYier way of doing this?" — prefer shared helpers/abstractions (e.g. an operator table) over duplicated near-identical code. Confidence: 0.6
+
 ## Workflow
 
 - Keep fixes tightly scoped: fix only the reported bug/compile error, and don't slip in unrelated changes (e.g. whitespace/padding behavior) — leave those for him to decide. Confidence: 0.85

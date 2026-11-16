@@ -83,7 +83,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
             ))
         });
 
-        let declaration = text::ident()
+        let declaration = identifier
             .then_ignore(just(":=").padded())
             .then(a_expr)
             .map(|(name, value)| Command::Assignment {
