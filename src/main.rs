@@ -28,7 +28,22 @@ enum Command<'src> {
 type ParserError<'src> = extra::Err<Rich<'src, char>>;
 
 fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'src>> {
-    let command = text::ascii::keyword("skip").to(Command::Skip());
+    let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
+
+    let a_expr = int.or(text::ident().map(AExpr::Variable));
+
+    let declaration = text::ident()
+        .then_ignore(just(":="))
+        .then(a_expr)
+        .map(|(name, value)| Command::Assignment {
+            name,
+            value: Box::new(value),
+        });
+
+    let command = choice((
+        text::ascii::keyword("skip").to(Command::Skip()),
+        declaration,
+    ));
 
     let cmds = command
         .separated_by(just(";").padded())
@@ -40,8 +55,10 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
 }
 
 fn main() {
-    let input_file = std::env::args().nth(1).unwrap();
-    let src = std::fs::read_to_string(&input_file).unwrap();
+    let input_file = std::env::args()
+        .nth(1)
+        .expect("Please provide an input file");
+    let src = std::fs::read_to_string(&input_file).expect("Failed to read input file");
     let result = parser().parse(&src);
     println!("{:?}", result);
     if let Err(errors) = result.into_result() {

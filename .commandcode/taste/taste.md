@@ -6,4 +6,4 @@
 
 ## Communication
 
-- Wants thorough, line-by-line explanations of the code he's given (he's on a learning project and says "I want to understand as many lines of code as possible to learn parsing and languages") rather than just a working snippet. Confidence: 0.75
+- Wants thorough, line-by-line explanations of the code he's given (he's on a learning project and says "I want to understand as many lines of code as possible to learn parsing and languages") rather than just a working snippet; phrases requests as "teach me how to fix this" — explain the cause and options, don't just apply an edit. Confidence: 0.85
