@@ -17,39 +17,109 @@ enum AExpr<'src> {
 }
 
 #[derive(Debug, Clone)]
+enum BExpr<'src> {
+    /// The `true` value
+    True,
+    /// The `false` value
+    False,
+    /// Boolean not: `not x`
+    Not(Box<BExpr<'src>>),
+    /// Boolean and: `x and y`
+    And(Box<BExpr<'src>>, Box<BExpr<'src>>),
+    /// Boolean or: `x or y`
+    Or(Box<BExpr<'src>>, Box<BExpr<'src>>),
+    /// Greater than: `x > y`
+    Gt(Box<AExpr<'src>>, Box<AExpr<'src>>),
+    /// Less than: `x < y`
+    Lt(Box<AExpr<'src>>, Box<AExpr<'src>>),
+    /// Equal to: `x == y`
+    Eq(Box<AExpr<'src>>, Box<AExpr<'src>>),
+    /// Not equal: `x <> y`
+    Ne(Box<AExpr<'src>>, Box<AExpr<'src>>),
+}
+
+#[derive(Debug, Clone)]
 enum Command<'src> {
     Skip(),
     Assignment {
         name: &'src str,
         value: Box<AExpr<'src>>,
     },
+    If {
+        condition: Box<BExpr<'src>>,
+        then_cmds: Vec<Command<'src>>,
+        else_cmds: Vec<Command<'src>>,
+    },
 }
 
 type ParserError<'src> = extra::Err<Rich<'src, char>>;
 
 fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'src>> {
-    let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
+    let cmds = recursive(|cmds| {
+        let space = text::whitespace().at_least(1);
 
-    let a_expr = int.or(text::ident().map(AExpr::Variable));
+        let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
 
-    let declaration = text::ident()
-        .then_ignore(just(":="))
-        .then(a_expr)
-        .map(|(name, value)| Command::Assignment {
-            name,
-            value: Box::new(value),
+        let a_expr = int.or(text::ident().map(AExpr::Variable));
+
+        let bool_expr = recursive(|bool_expr| {
+            choice((
+                just("true").to(BExpr::True),
+                just("false").to(BExpr::False),
+                just("not")
+                    .ignore_then(space)
+                    .ignore_then(bool_expr)
+                    .map(|expr| BExpr::Not(Box::new(expr))),
+                a_expr
+                    .then_ignore(just(">").padded())
+                    .then(a_expr)
+                    .map(|(left, right)| BExpr::Gt(Box::new(left), Box::new(right))),
+                a_expr
+                    .then_ignore(just("<").padded())
+                    .then(a_expr)
+                    .map(|(left, right)| BExpr::Lt(Box::new(left), Box::new(right))),
+            ))
         });
 
-    let command = choice((
-        text::ascii::keyword("skip").to(Command::Skip()),
-        declaration,
-    ));
+        let declaration = text::ident()
+            .then_ignore(just(":=").padded())
+            .then(a_expr)
+            .map(|(name, value)| Command::Assignment {
+                name,
+                value: Box::new(value),
+            });
 
-    let cmds = command
-        .separated_by(just(";").padded())
-        .allow_trailing()
-        .collect::<Vec<_>>()
-        .padded();
+        let if_statement = just("if")
+            .ignore_then(space)
+            .ignore_then(bool_expr)
+            .then_ignore(space)
+            .then_ignore(text::ascii::keyword("then"))
+            .then_ignore(space)
+            .then(cmds.clone())
+            .then_ignore(space)
+            .then_ignore(text::ascii::keyword("else"))
+            .then_ignore(space)
+            .then(cmds.clone())
+            .then_ignore(space)
+            .then_ignore(text::ascii::keyword("fi"))
+            .map(|((condition, then_cmds), else_cmds)| Command::If {
+                condition: Box::new(condition),
+                then_cmds,
+                else_cmds,
+            });
+
+        let command = choice((
+            text::ascii::keyword("skip").to(Command::Skip()),
+            declaration,
+            if_statement,
+        ));
+
+        command
+            .separated_by(just(";").padded())
+            .allow_trailing()
+            .collect::<Vec<_>>()
+            .padded()
+    });
 
     cmds.map(Program::Commands)
 }
