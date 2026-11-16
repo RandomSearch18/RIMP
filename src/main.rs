@@ -57,10 +57,12 @@ type ParserError<'src> = extra::Err<Rich<'src, char>>;
 fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'src>> {
     let cmds = recursive(|cmds| {
         let space = text::whitespace().at_least(1);
-
         let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
+        const RESERVED_KEYWORDS: &[&str] =
+            &["if", "then", "else", "fi", "skip", "not", "true", "false"];
+        let identifier = text::ident().filter(|s: &&str| !RESERVED_KEYWORDS.contains(s));
 
-        let a_expr = int.or(text::ident().map(AExpr::Variable));
+        let a_expr = int.or(identifier.map(AExpr::Variable));
 
         let bool_expr = recursive(|bool_expr| {
             choice((
@@ -94,13 +96,9 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
             .ignore_then(bool_expr)
             .then_ignore(space)
             .then_ignore(text::ascii::keyword("then"))
-            .then_ignore(space)
             .then(cmds.clone())
-            .then_ignore(space)
             .then_ignore(text::ascii::keyword("else"))
-            .then_ignore(space)
             .then(cmds.clone())
-            .then_ignore(space)
             .then_ignore(text::ascii::keyword("fi"))
             .map(|((condition, then_cmds), else_cmds)| Command::If {
                 condition: Box::new(condition),
@@ -130,7 +128,7 @@ fn main() {
         .expect("Please provide an input file");
     let src = std::fs::read_to_string(&input_file).expect("Failed to read input file");
     let result = parser().parse(&src);
-    println!("{:?}", result);
+    println!("{:#?}", result);
     if let Err(errors) = result.into_result() {
         for error in errors {
             let span = error.span();
