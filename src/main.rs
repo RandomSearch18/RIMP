@@ -56,6 +56,8 @@ type ParserError<'src> = extra::Err<Rich<'src, char>>;
 
 fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'src>> {
     let cmds = recursive(|cmds| {
+        type BinOp<'src> = fn(Box<AExpr<'src>>, Box<AExpr<'src>>) -> BExpr<'src>;
+
         let space = text::whitespace().at_least(1);
         let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
         const RESERVED_KEYWORDS: &[&str] =
@@ -64,22 +66,40 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
 
         let a_expr = int.or(identifier.map(AExpr::Variable));
 
+        let arithmetic_comparison_op = choice((
+            just(">").to(BExpr::Gt as BinOp<'src>),
+            just("<").to(BExpr::Lt as BinOp<'src>),
+            just("<>").to(BExpr::Ne as BinOp<'src>),
+            just("==").to(BExpr::Eq as BinOp<'src>),
+        ))
+        .padded();
+        let arithmetic_comparison = a_expr
+            .then(arithmetic_comparison_op)
+            .then(a_expr)
+            .map(|((left, operator), right)| operator(Box::new(left), Box::new(right)));
         let bool_expr = recursive(|bool_expr| {
             choice((
                 just("true").to(BExpr::True),
                 just("false").to(BExpr::False),
                 just("not")
                     .ignore_then(space)
-                    .ignore_then(bool_expr)
+                    .ignore_then(bool_expr.clone())
                     .map(|expr| BExpr::Not(Box::new(expr))),
-                a_expr
-                    .then_ignore(just(">").padded())
-                    .then(a_expr)
-                    .map(|(left, right)| BExpr::Gt(Box::new(left), Box::new(right))),
-                a_expr
-                    .then_ignore(just("<").padded())
-                    .then(a_expr)
-                    .map(|(left, right)| BExpr::Lt(Box::new(left), Box::new(right))),
+                bool_expr
+                    .clone()
+                    .then_ignore(space)
+                    .then_ignore(just("and"))
+                    .then_ignore(space)
+                    .then(bool_expr.clone())
+                    .map(|(left, right)| BExpr::And(Box::new(left), Box::new(right))),
+                bool_expr
+                    .clone()
+                    .then_ignore(space)
+                    .then_ignore(just("or"))
+                    .then_ignore(space)
+                    .then(bool_expr.clone())
+                    .map(|(left, right)| BExpr::Or(Box::new(left), Box::new(right))),
+                arithmetic_comparison,
             ))
         });
 
