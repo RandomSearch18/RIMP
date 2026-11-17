@@ -78,29 +78,36 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
             .then(a_expr)
             .map(|((left, operator), right)| operator(Box::new(left), Box::new(right)));
         let bool_expr = recursive(|bool_expr| {
-            choice((
+            let atom = choice((
                 just("true").to(BExpr::True),
                 just("false").to(BExpr::False),
                 just("not")
                     .ignore_then(space)
                     .ignore_then(bool_expr.clone())
                     .map(|expr| BExpr::Not(Box::new(expr))),
-                bool_expr
-                    .clone()
-                    .then_ignore(space)
-                    .then_ignore(just("and"))
-                    .then_ignore(space)
-                    .then(bool_expr.clone())
-                    .map(|(left, right)| BExpr::And(Box::new(left), Box::new(right))),
-                bool_expr
-                    .clone()
-                    .then_ignore(space)
-                    .then_ignore(just("or"))
-                    .then_ignore(space)
-                    .then(bool_expr.clone())
-                    .map(|(left, right)| BExpr::Or(Box::new(left), Box::new(right))),
                 arithmetic_comparison,
-            ))
+            ));
+
+            #[derive(Clone)]
+            enum BoolOp {
+                And,
+                Or,
+            }
+            let bool_op = choice((
+                text::ascii::keyword("and").to(BoolOp::And),
+                text::ascii::keyword("or").to(BoolOp::Or),
+            ));
+            let tail = space
+                .ignore_then(bool_op)
+                .then_ignore(space)
+                .then(atom.clone())
+                .repeated();
+
+            // This avoids left-recursion issues
+            atom.foldl(tail, |left, (op, right)| match op {
+                BoolOp::And => BExpr::And(Box::new(left), Box::new(right)),
+                BoolOp::Or => BExpr::Or(Box::new(left), Box::new(right)),
+            })
         });
 
         let declaration = identifier
