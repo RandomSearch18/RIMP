@@ -114,6 +114,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
                     .ignore_then(bool_expr.clone())
                     .map(|expr| BExpr::Not(Box::new(expr))),
                 arithmetic_comparison,
+                bool_expr.delimited_by(just("("), just(")")),
             ));
 
             #[derive(Clone)]
