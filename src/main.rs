@@ -14,6 +14,9 @@ enum Program<'src> {
 enum AExpr<'src> {
     Int(u64),
     Variable(&'src str),
+    Add(Box<AExpr<'src>>, Box<AExpr<'src>>),
+    Subtract(Box<AExpr<'src>>, Box<AExpr<'src>>),
+    Multiply(Box<AExpr<'src>>, Box<AExpr<'src>>),
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +53,10 @@ enum Command<'src> {
         then_cmds: Vec<Command<'src>>,
         else_cmds: Vec<Command<'src>>,
     },
+    While {
+        condition: Box<BExpr<'src>>,
+        cmds: Vec<Command<'src>>,
+    },
 }
 
 type ParserError<'src> = extra::Err<Rich<'src, char>>;
@@ -57,6 +64,7 @@ type ParserError<'src> = extra::Err<Rich<'src, char>>;
 fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'src>> {
     let cmds = recursive(|cmds| {
         type BinOp<'src> = fn(Box<AExpr<'src>>, Box<AExpr<'src>>) -> BExpr<'src>;
+        type ArithmeticOp<'src> = fn(Box<AExpr<'src>>, Box<AExpr<'src>>) -> AExpr<'src>;
 
         let space = text::whitespace().at_least(1);
         let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
@@ -64,7 +72,26 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
             &["if", "then", "else", "fi", "skip", "not", "true", "false"];
         let identifier = text::ident().filter(|s: &&str| !RESERVED_KEYWORDS.contains(s));
 
-        let a_expr = int.or(identifier.map(AExpr::Variable));
+        let a_expr = recursive(|a_expr| {
+            let arithmetic_operator = choice((
+                just("+").to(AExpr::Add as ArithmeticOp<'src>),
+                just("-").to(AExpr::Subtract as ArithmeticOp<'src>),
+                just("*").to(AExpr::Multiply as ArithmeticOp<'src>),
+            ));
+
+            let arithmetic_operation = a_expr
+                .clone()
+                .then(arithmetic_operator.padded())
+                .then(a_expr.clone())
+                .map(|((left, operator), right)| operator(Box::new(left), Box::new(right)));
+
+            choice((
+                int,
+                identifier.map(AExpr::Variable),
+                arithmetic_operation,
+                a_expr.delimited_by(just("("), just(")")),
+            ))
+        });
 
         let arithmetic_comparison_op = choice((
             just(">").to(BExpr::Gt as BinOp<'src>),
@@ -74,8 +101,9 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
         ))
         .padded();
         let arithmetic_comparison = a_expr
+            .clone()
             .then(arithmetic_comparison_op)
-            .then(a_expr)
+            .then(a_expr.clone())
             .map(|((left, operator), right)| operator(Box::new(left), Box::new(right)));
         let bool_expr = recursive(|bool_expr| {
             let atom = choice((
@@ -120,7 +148,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
 
         let if_statement = just("if")
             .ignore_then(space)
-            .ignore_then(bool_expr)
+            .ignore_then(bool_expr.clone())
             .then_ignore(space)
             .then_ignore(text::ascii::keyword("then"))
             .then(cmds.clone())
@@ -133,10 +161,23 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
                 else_cmds,
             });
 
+        let while_statement = just("while")
+            .ignore_then(space)
+            .ignore_then(bool_expr.clone())
+            .then_ignore(space)
+            .then_ignore(text::ascii::keyword("do"))
+            .then(cmds.clone())
+            .then_ignore(text::ascii::keyword("od"))
+            .map(|(condition, cmds)| Command::While {
+                condition: Box::new(condition),
+                cmds,
+            });
+
         let command = choice((
             text::ascii::keyword("skip").to(Command::Skip()),
             declaration,
             if_statement,
+            while_statement,
         ));
 
         command
