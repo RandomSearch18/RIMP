@@ -79,19 +79,15 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
                 just("-").to(AExpr::Subtract as ArithmeticOp<'src>),
                 just("*").to(AExpr::Multiply as ArithmeticOp<'src>),
             ));
-
-            let arithmetic_operation = a_expr
-                .clone()
-                .then(arithmetic_operator.padded())
-                .then(a_expr.clone())
-                .map(|((left, operator), right)| operator(Box::new(left), Box::new(right)));
-
-            choice((
+            let atom = choice((
                 int,
                 identifier.map(AExpr::Variable),
-                arithmetic_operation,
                 a_expr.delimited_by(just("("), just(")")),
-            ))
+            ));
+            atom.clone().foldl(
+                arithmetic_operator.padded().then(atom).repeated(),
+                |left, (operator, right)| operator(Box::new(left), Box::new(right)),
+            )
         });
 
         let arithmetic_comparison_op = choice((
