@@ -68,9 +68,10 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
 
         let space = text::whitespace().at_least(1);
         let int = text::int(10).from_str::<u64>().unwrapped().map(AExpr::Int);
-        const RESERVED_KEYWORDS: &[&str] =
-            &["if", "then", "else", "fi", "skip", "not", "true", "false"];
-        let identifier = text::ident().filter(|s: &&str| !RESERVED_KEYWORDS.contains(s));
+        const RESERVED_KEYWORDS: &[&str] = &["if", "then", "else", "fi", "skip"];
+        let identifier = text::ident()
+            .filter(|s: &&str| !RESERVED_KEYWORDS.contains(s))
+            .labelled("identifier");
 
         let a_expr = recursive(|a_expr| {
             let arithmetic_operator = choice((
@@ -174,8 +175,12 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Program<'src>, ParserError<'sr
                 cmds,
             });
 
+        let skip = text::ascii::keyword("skip")
+            .to(Command::Skip())
+            .labelled("'skip'");
         let command = choice((
-            text::ascii::keyword("skip").to(Command::Skip()),
+            //
+            skip,
             declaration,
             if_statement,
             while_statement,
